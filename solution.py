@@ -5,17 +5,17 @@ import math
 import time
 from ultralytics import YOLO
 
-def detect_stop_sign(image):
-    RED_THRESHOLD = 500
+def detect_stop_sign_one(image):
+    RED_THRESHOLD = 1000
     RED_MAX = 20000
-    global stopped
+    stopped = False  # global variable to track if the robot is stopped
     img_data = image.data
 
     if img_data:
-        img = robot.rosImg_to_cv2()  # convert ROS image to OpenCV format
-        filtered_img = robot.red_filter(img)  # apply red filter
+        img = camera.rosImg_to_cv2()  # convert ROS image to OpenCV format
+        filtered_img = camera.red_filter(img)  # apply red filter
         # print(f"filtered img: {filtered_img}")
-        contoured_img, max_area, (cX, cY) = robot.add_contour(filtered_img)  # add contours
+        contoured_img, max_area, (cX, cY) = camera.add_contour(filtered_img)  # add contours
         # print("countoured_img", contoured_img)
 
         print(f"max_area: {max_area}")
@@ -41,23 +41,23 @@ def detect_april_tag(image):
     height = image.height
     width = image.width
     img_3D = np.reshape(img_data, (height, width, 3))
-    tags = robot.detect_april_tag_from_img(img_3D)
+    tags = camera.detect_april_tag_from_img(img_3D)
     print("tags", tags)
     if (tags):
         tag_id = next(iter(tags))
-        scan_data = robot.checkScan()
+        scan_data = lidar.checkScan()
         # if scan_data:
-        min_dist, min_dist_angle = robot.detect_tag_distance(scan_data.ranges)  
+        min_dist, min_dist_angle = camera.detect_tag_distance(scan_data.ranges)  
         print("min_dist for april tag", min_dist)      
         print("tag id", tag_id)
         if tag_id == 1 and min_dist < 0.50:
-            robot.rotate(80,-1)
+            control.rotate(80,-1)
         elif tag_id == 5 and min_dist < 1.25:
-            robot.rotate(135, -1)
+            control.rotate(135, -1)
         elif tag_id == 2 and min_dist < 0.5:
-            robot.rotate(45, -1)
+            control.rotate(45, -1)
         elif tag_id == 3 and min_dist < 0.5:
-            robot.rotate(135, -1)
+            control.rotate(135, -1)
         # elif tag_id == 4 and min_dist < 0.5:
         #     robot.stop_keyboard_control()
         #     robot.destroy_node()
@@ -73,7 +73,7 @@ def handle_stop_sign():
     print("Resuming control after stopping for stop sign.")
 
 # Variable for controlling which level of the challenge to test -- set to 0 for pure keyboard control
-challengeLevel = 1
+challengeLevel = 4
 
 # Set to True if you want to run the simulation, False if you want to run on the real robot
 is_SIM = False
@@ -106,7 +106,6 @@ def detect_stop_sign() -> bool:
 if challengeLevel <= 2:
     control.start_keyboard_control()
     rclpy.spin_once(robot, timeout_sec=0.1)
-
 
 try:
     if challengeLevel == 0:
@@ -175,12 +174,18 @@ try:
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
             # Write your solution here for challenge level 4
+            detect_obstacle_ahead()  # check for collisions during each iteration
+            currTime = robot.get_clock().now()
+            # print("time", currTime)
+            if (currTime.nanoseconds % 5 == 0):
+                image = camera.checkImage()
+                detect_stop_sign_one(image)
+                detect_april_tag(image)
 
     if challengeLevel == 5:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
-            # Write your solution here for challenge level 5
             
 
 except KeyboardInterrupt:
