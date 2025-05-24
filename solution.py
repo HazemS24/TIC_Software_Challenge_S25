@@ -24,6 +24,18 @@ imu = IMU(robot)
 logging = Logging(robot)
 lidar = Lidar(robot)
 
+def detect_obstacle_ahead(threshold=0.4) -> bool:
+    scan = lidar.checkScan()
+    dist, _ = lidar.detect_obstacle_in_cone(scan, distance=threshold, center=0, offset_angle=20)
+    return dist != -1
+
+def detect_stop_sign() -> bool:
+    img = camera.rosImg_to_cv2()
+    if img is None:
+        return False
+    detected, *_ = camera.ML_predict_stop_sign(img)
+    return detected
+
 if challengeLevel <= 2:
     control.start_keyboard_control()
     rclpy.spin_once(robot, timeout_sec=0.1)
@@ -43,19 +55,51 @@ try:
             # Write your solution here for challenge level 1
             # It is recommended you use functions for aspects of the challenge that will be resused in later challenges
             # For example, create a function that will detect if the robot is too close to a wall
+            if detect_obstacle_ahead():
+                print("Wall too close! Reversing.")
+                control.send_cmd_vel(-0.3, 0.0)
+                time.sleep(0.5)
+                control.send_cmd_vel(0.0, 0.0)
 
     if challengeLevel == 2:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
             # Write your solution here for challenge level 2
-            
+            if detect_stop_sign():
+                print("Stop sign detected! Pausing...")
+                control.send_cmd_vel(0.0, 0.0)
+                time.sleep(3)
+
+            if detect_obstacle_ahead():
+                print("Obstacle detected. Reversing.")
+                control.send_cmd_vel(-0.3, 0.0)
+                time.sleep(0.5)
+                control.send_cmd_vel(0.0, 0.0)
     if challengeLevel == 3:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
             # Write your solution here for challenge level 3 (or 3.5)
+            img = camera.rosImg_to_cv2()
+            stop_detected = camera.ML_predict_stop_sign(img)[0] if img is not None else False
+            obstacle_detected = detect_obstacle_ahead(0.5)
 
+            if stop_detected:
+                print("Stop sign ahead. Pausing.")
+                control.send_cmd_vel(0.0, 0.0)
+                time.sleep(3)
+                continue
+
+            if obstacle_detected:
+                print("Obstacle detected. Stopping.")
+                control.send_cmd_vel(0.0, 0.0)
+                time.sleep(1)
+                continue
+
+            control.send_cmd_vel(0.3, 0.0)
+            rclpy.spin_once(robot, timeout_sec=0.1)
+            time.sleep(0.1)
     if challengeLevel == 4:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
