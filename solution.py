@@ -5,6 +5,73 @@ import math
 import time
 from ultralytics import YOLO
 
+def detect_stop_sign(image):
+    RED_THRESHOLD = 500
+    RED_MAX = 20000
+    global stopped
+    img_data = image.data
+
+    if img_data:
+        img = robot.rosImg_to_cv2()  # convert ROS image to OpenCV format
+        filtered_img = robot.red_filter(img)  # apply red filter
+        # print(f"filtered img: {filtered_img}")
+        contoured_img, max_area, (cX, cY) = robot.add_contour(filtered_img)  # add contours
+        # print("countoured_img", contoured_img)
+
+        print(f"max_area: {max_area}")
+        if max_area > RED_THRESHOLD and max_area < RED_MAX:  # check if the area of the detected contour is large enough
+            print("Stop sign detected! Stopping the robot.")
+            if not stopped:
+                handle_stop_sign()  # handle stop sign behavior
+                stopped = True
+        else:
+            stopped = False
+        print("stopped", stopped)
+
+def detect_april_tag(image):
+    # 8 very bottom right corner
+    # 2 left bottom triangle
+    # 4 right top wall
+    # 1 right protruding triangle bottom
+    # 3 back face tag slightly left
+    # 5 top left corner
+
+    print("IN TAGS")
+    img_data = image.data
+    height = image.height
+    width = image.width
+    img_3D = np.reshape(img_data, (height, width, 3))
+    tags = robot.detect_april_tag_from_img(img_3D)
+    print("tags", tags)
+    if (tags):
+        tag_id = next(iter(tags))
+        scan_data = robot.checkScan()
+        # if scan_data:
+        min_dist, min_dist_angle = robot.detect_tag_distance(scan_data.ranges)  
+        print("min_dist for april tag", min_dist)      
+        print("tag id", tag_id)
+        if tag_id == 1 and min_dist < 0.50:
+            robot.rotate(80,-1)
+        elif tag_id == 5 and min_dist < 1.25:
+            robot.rotate(135, -1)
+        elif tag_id == 2 and min_dist < 0.5:
+            robot.rotate(45, -1)
+        elif tag_id == 3 and min_dist < 0.5:
+            robot.rotate(135, -1)
+        # elif tag_id == 4 and min_dist < 0.5:
+        #     robot.stop_keyboard_control()
+        #     robot.destroy_node()
+        #     rclpy.shutdown()
+        # elif tag_id == 8:
+        #     robot.rotate(180, 1)  # Rotate 30 degrees to the left
+        # elif tag_id == 2
+
+def handle_stop_sign():
+    control.stop_keyboard_input()
+    time.sleep(3)
+    control.start_keyboard_input()
+    print("Resuming control after stopping for stop sign.")
+
 # Variable for controlling which level of the challenge to test -- set to 0 for pure keyboard control
 challengeLevel = 1
 
@@ -62,12 +129,7 @@ try:
 
             else: 
                 control.move_forward()
-                time.sleep(0.2)
-
-
-
-                
-                
+                time.sleep(0.2)                
 
     if challengeLevel == 2:
         while rclpy.ok():
@@ -129,3 +191,5 @@ finally:
     robot.destroy_node()
     if rclpy.ok():
         rclpy.shutdown()
+
+
