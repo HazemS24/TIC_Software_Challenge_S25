@@ -6,10 +6,10 @@ import time
 from ultralytics import YOLO
 
 # Variable for controlling which level of the challenge to test -- set to 0 for pure keyboard control
-challengeLevel = 0
+challengeLevel = 1
 
 # Set to True if you want to run the simulation, False if you want to run on the real robot
-is_SIM = True
+is_SIM = False
 
 # Set to True if you want to run in debug mode with extra print statements, False otherwise
 Debug = False
@@ -24,9 +24,9 @@ imu = IMU(robot)
 logging = Logging(robot)
 lidar = Lidar(robot)
 
-def detect_obstacle_ahead(threshold=0.4) -> bool:
+def detect_obstacle_ahead(threshold=0.2) -> bool:
     scan = lidar.checkScan()
-    dist, _ = lidar.detect_obstacle_in_cone(scan, distance=threshold, center=0, offset_angle=20)
+    dist, _ = lidar.detect_obstacle_in_cone(scan, distance=threshold, center=0, offset_angle=1)
     return dist != -1
 
 def detect_stop_sign() -> bool:
@@ -51,15 +51,23 @@ try:
     if challengeLevel == 1:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
-            time.sleep(0.1)
+
             # Write your solution here for challenge level 1
             # It is recommended you use functions for aspects of the challenge that will be resused in later challenges
             # For example, create a function that will detect if the robot is too close to a wall
-            if detect_obstacle_ahead():
+            if detect_obstacle_ahead(0.3):
                 print("Wall too close! Reversing.")
-                control.send_cmd_vel(-0.3, 0.0)
-                time.sleep(0.5)
-                control.send_cmd_vel(0.0, 0.0)
+                control.set_cmd_vel(-1, 0, 1)
+                time.sleep(0.2)
+
+            else: 
+                control.move_forward()
+                time.sleep(0.2)
+
+
+
+                
+                
 
     if challengeLevel == 2:
         while rclpy.ok():
