@@ -11,7 +11,6 @@ class Camera:
         self.robot = robot
         self.model = None
 
-
     def checkImage(self) -> np.ndarray:
         ''' Waits for the robot\'s image future to complete, then returns the latest image message. '''
         self.robot.image_future = rclpy.Future()

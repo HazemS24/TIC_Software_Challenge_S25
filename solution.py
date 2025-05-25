@@ -16,6 +16,8 @@ CENTER_PID.output_limits = (-1.2, 1.2)
 
 CAMERA_FOCAL_PX  = 620               # <-- put your calibrated focal length here (pixels)
 APRIL_H_METERS   = 0.162  
+STOP_SIGN_HEIGHT = 0.60
+STOP_DISTANCE    = 0.01
 
 def detect_stop_sign_one(image):
     RED_THRESHOLD = 1000
@@ -30,14 +32,21 @@ def detect_stop_sign_one(image):
         contoured_img, max_area, (cX, cY) = camera.add_contour(filtered_img)  # add contours
         # print("countoured_img", contoured_img)
 
-        print(f"max_area: {max_area}")
-        if max_area > RED_THRESHOLD and max_area < RED_MAX:  # check if the area of the detected contour is large enough
+        if RED_THRESHOLD < max_area < RED_MAX:  # check if the area of the detected contour is large enough
             print("Stop sign detected! Stopping the robot.")
-            if not stopped:
-                handle_stop_sign()  # handle stop sign behavior
-                stopped = True
+            detected, x1, y1, x2, y2 = camera.ML_predict_stop_sign(img)
+            if detected:
+                pix_h = y2 - y1
+                dist = STOP_SIGN_HEIGHT * CAMERA_FOCAL_PX / (pix_h + 1e-6)
+                print(f"Estimated stop sign distance: {dist:.2f} m")
+                if dist < STOP_DISTANCE and not stopped:
+                    print("Stop sign within 10 cm → stopping.")
+                    handle_stop_sign()
+                    stopped = True
         else:
             stopped = False
+    else:
+        stopped = False
         print("stopped", stopped)
 
 def detect_april_tag(image):
@@ -48,7 +57,7 @@ def detect_april_tag(image):
     # 3 back face tag slightly left
     # 5 top left corner
 
-    print("IN TAGS")
+    # print("IN TAGS")
     img_data = image.data
     height = image.height
     width = image.width
@@ -69,7 +78,9 @@ def detect_april_tag(image):
         elif tag_id == 2 and min_dist < 0.5:
             control.rotate(45, -1)
         elif tag_id == 3 and min_dist < 0.5:
-            control.rotate(135, -1)
+            control.rotate(35, -1)
+        elif tag_id == 7 and min_dist < 0.5:
+            control.rotate(85, 1)
         # elif tag_id == 4 and min_dist < 0.5:
         #     robot.stop_keyboard_control()
         #     robot.destroy_node()
@@ -84,38 +95,28 @@ def handle_stop_sign():
     control.start_keyboard_input()
     print("Resuming control after stopping for stop sign.")
 
-def _median_fan(ranges, center_deg, fan=6):
-    """Median of a narrow lidar fan around <center_deg> (deg in lidar frame)."""
-    idx = [(center_deg + i) % 360 for i in range(-fan, fan + 1)]
-    vals = [r for i, r in enumerate(ranges) if i in idx and r > 0.02]
-    return np.median(vals) if vals else None
-
-def _ema_tag_dist(raw):
-    last = TAG_HISTORY[-1] if TAG_HISTORY else raw
-    smoothed = EMA_ALPHA * raw + (1 - EMA_ALPHA) * last
-    TAG_HISTORY.append(smoothed)
-    return smoothed
-
-def _fuse_dist(lidar_d, pix_h):
-    """Conservative fusion of lidar and camera size estimate."""
-    cam_d = (APRIL_H_METERS * CAMERA_FOCAL_PX) / (pix_h + 1e-6)
-    return cam_d if lidar_d is None else min(lidar_d, cam_d)
-
 half = None
-def align_path(speed=0.30):
-    """Center robot between left & right walls; call at ~20 Hz."""
+def align_path(speed, kp, cone_offset, max_detect_dist):
+    global half
     scan = lidar.checkScan()
-    left  = _median_fan(scan.ranges, -45)  # left wall ≈ +135 ° in TurtleBot frame
-    right = _median_fan(scan.ranges,  45)  # right wall ≈ –135 °
 
-    if None in (left, right):
-        control.send_cmd_vel(speed, 0.0)    # missing wall → just go straight
-        return
+    left, _ = lidar.detect_obstacle_in_cone(scan, distance=max_detect_dist, center=-90, offset_angle=cone_offset)
+    right, _ = lidar.detect_obstacle_in_cone(scan, distance=max_detect_dist, center=90, offset_angle=cone_offset)
 
-    err = left - right                      # +ve ⇒ closer to right wall
-    w   = CENTER_PID(err)                   # PID gives angular vel (rad/s)
-    v   = speed * (1 - abs(w) / 1.2)        # slow slightly while turning
-    control.send_cmd_vel(v, w)
+    if left > 0 and right > 0:
+        half = (left + right) / 2.0
+        err = left - right
+    elif left > 0:
+        err = left - half
+    elif right > 0:
+        err = half - right
+    else: 
+        err = 0
+    
+    linear_vel = speed
+    angular_vel = -kp * err  # Proportional control for angular velocity
+
+    control.send_cmd_vel(0.0, angular_vel)
 
 
 # Variable for controlling which level of the challenge to test -- set to 0 for pure keyboard control
@@ -230,8 +231,8 @@ try:
                 detect_april_tag(image)
 
             control.send_cmd_vel(0.3, 0.0) #move forward
-            if (currTime.nanoseconds % 5e8 == 0): #every second
-                align_path(speed=0.3, kp=0.3, cone_offset=20, max_detect_dist=0.6)
+            # if (currTime.nanoseconds % 5e8 == 0): #every second
+            #     align_path(speed=0.3, kp=0.3, cone_offset=20, max_detect_dist=0.6)
 
             # check if conflict between wall and correction
             # add distance to april tag
@@ -256,7 +257,7 @@ try:
             control.set_cmd_vel(0.3, 0.0, 4.25)
 
             # 2) turn 80° left
-            control.rotate(76, 1)
+            control.rotate(78, 1)
 
             # 3) forward 8 seconds
             control.set_cmd_vel(0.3, 0.0, 4.5)
@@ -266,7 +267,6 @@ try:
 
             # 3) forward 2 seconds
             control.set_cmd_vel(0.3, 0.0, 2.3)
-
 
             # 5) turn 45° left
             control.rotate(35, 1)
@@ -278,7 +278,7 @@ try:
             control.rotate(117, 1)
 
             # 8) forward 10 seconds
-            control.set_cmd_vel(0.3, 0.0, 11.0)
+            control.set_cmd_vel(0.3, 0.0, 10.2)
 
             break
 
@@ -289,7 +289,7 @@ try:
             # define the sequence of actions
             sequence = [
                 ("move",   0.3, 0.0,  2.0),   # forward 2s
-                ("rotate", 90,  1,    None),  # turn L 90°
+                ("rotate", 78,  1,    None),  # turn L 90°
                 ("move",   0.3, 0.0,  5.0),   # forward 5s
                 ("move",   0.0, 0.0,  2.0),   # stop 2s
                 ("rotate", 45,  1,    None),  # turn L 45°
@@ -324,9 +324,6 @@ try:
             # end of sequence: ensure robot is stopped
             control.send_cmd_vel(0.0, 0.0)
             break  # run sequence just once
-
-
-            
 
 except KeyboardInterrupt:
     print("Keyboard interrupt received. Stopping...")
