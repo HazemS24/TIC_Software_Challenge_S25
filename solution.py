@@ -24,29 +24,17 @@ def detect_stop_sign_one(image):
     RED_MAX = 20000
     stopped = False  # global variable to track if the robot is stopped
     img_data = image.data
-
     if img_data:
         img = camera.rosImg_to_cv2()  # convert ROS image to OpenCV format
         filtered_img = camera.red_filter(img)  # apply red filter
-        # print(f"filtered img: {filtered_img}")
-        contoured_img, max_area, (cX, cY) = camera.add_contour(filtered_img)  # add contours
-        # print("countoured_img", contoured_img)
-
-        if RED_THRESHOLD < max_area < RED_MAX:  # check if the area of the detected contour is large enough
+        _, max_area, (cX, cY) = camera.add_contour(filtered_img)  # add contours
+        if max_area > RED_THRESHOLD and max_area < RED_MAX:  # check if the area of the detected contour is large enough
             print("Stop sign detected! Stopping the robot.")
-            detected, x1, y1, x2, y2 = camera.ML_predict_stop_sign(img)
-            if detected:
-                pix_h = y2 - y1
-                dist = STOP_SIGN_HEIGHT * CAMERA_FOCAL_PX / (pix_h + 1e-6)
-                print(f"Estimated stop sign distance: {dist:.2f} m")
-                if dist < STOP_DISTANCE and not stopped:
-                    print("Stop sign within 10 cm → stopping.")
-                    handle_stop_sign()
-                    stopped = True
+            if not stopped:
+                handle_stop_sign()  # handle stop sign behavior
+                stopped = True
         else:
             stopped = False
-    else:
-        stopped = False
         print("stopped", stopped)
 
 def detect_april_tag(image):
