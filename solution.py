@@ -138,6 +138,40 @@ def detect_stop_sign() -> bool:
     detected, *_ = camera.ML_predict_stop_sign(img)
     return detected
 
+danger_threshold = 0.30      # metres
+cone_deg         = 2         # check ±1°
+_latched         = False     # one-shot latch inside callback
+
+def _backup_routine():
+    """Reverse a little, then stop; keyboard disabled while backing."""
+    control.stop_keyboard_input()
+    control.send_cmd_vel(-0.25, 0.0)
+    time.sleep(0.6)
+    control.send_cmd_vel(0.0, 0.0)
+    control.start_keyboard_input()
+
+def safety_scan_callback(msg: LaserScan):
+    global _latched
+    half = cone_deg // 2
+    too_close = any(
+        math.isfinite(msg.ranges[(a + 360) % 360]) and
+        msg.ranges[(a + 360) % 360] < danger_threshold
+        for a in range(-half, half + 1)
+    )
+    if too_close:
+        if not _latched:            # fire once when entering danger zone
+            _latched = True
+            _backup_routine()
+    else:
+        _latched = False
+
+robot.create_subscription(          # ← this line “registers” the callback
+    LaserScan,
+    "/scan",
+    safety_scan_callback,
+    qos_profile=10
+)
+
 if challengeLevel <= 2:
     control.start_keyboard_control()
     rclpy.spin_once(robot, timeout_sec=0.1)
@@ -157,14 +191,14 @@ try:
             # It is recommended you use functions for aspects of the challenge that will be resused in later challenges
             # For example, create a function that will detect if the robot is too close to a wall
             if detect_obstacle_ahead(0.3):
+                control.stop_keyboard_input() 
+                control.send_cmd_vel(0.0, 0.0)                
+                time.sleep(0.5)
                 print("Wall too close! Reversing.")
                 control.set_cmd_vel(-1, 0, 1)
-                time.sleep(0.2)
-
             else: 
-                control.move_forward()
-                time.sleep(0.2)                
-
+                control.start_keyboard_input() 
+                
     if challengeLevel == 2:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
@@ -321,5 +355,3 @@ finally:
     robot.destroy_node()
     if rclpy.ok():
         rclpy.shutdown()
-
-
