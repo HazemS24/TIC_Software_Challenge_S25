@@ -37,6 +37,24 @@ def detect_stop_sign_one(image):
             stopped = False
         print("stopped", stopped)
 
+def detect_stop_sign_two(image):
+    RED_THRESHOLD = 1000
+    RED_MAX = 20000
+    stopped = False  # global variable to track if the robot is stopped
+    img_data = image.data
+    if img_data:
+        img = camera.rosImg_to_cv2()  # convert ROS image to OpenCV format
+        filtered_img = camera.red_filter(img)  # apply red filter
+        _, max_area, (cX, cY) = camera.add_contour(filtered_img)  # add contours
+        if max_area > RED_THRESHOLD and max_area < RED_MAX:  # check if the area of the detected contour is large enough
+            print("Stop sign detected! Stopping the robot.")
+            if not stopped:
+                handle_stop_sign_two()  # handle stop sign behavior
+                stopped = True
+        else:
+            stopped = False
+        print("stopped", stopped)
+
 def detect_april_tag(image):
     # 8 very bottom right corner
     # 2 left bottom triangle
@@ -77,10 +95,25 @@ def detect_april_tag(image):
         #     robot.rotate(180, 1)  # Rotate 30 degrees to the left
         # elif tag_id == 2
 
+def detect_april_tag_two(image):
+    img_data = image.data
+    height = image.height
+    width = image.width
+    img_3D = np.reshape(img_data, (height, width, 3))
+    tags = camera.detect_april_tag_from_img(img_3D)
+    print("tags", tags)
+    if (tags):
+        tag_id = next(iter(tags))   
+        print("tag id", tag_id)
+
+
 def handle_stop_sign():
     control.stop_keyboard_input()
     time.sleep(3)
     control.start_keyboard_input()
+    print("Resuming control after stopping for stop sign.")
+
+def handle_stop_sign_two():
     print("Resuming control after stopping for stop sign.")
 
 half = None
@@ -108,7 +141,7 @@ def align_path(speed, kp, cone_offset, max_detect_dist):
 
 
 # Variable for controlling which level of the challenge to test -- set to 0 for pure keyboard control
-challengeLevel = 6
+challengeLevel = 2
 
 # Set to True if you want to run the simulation, False if you want to run on the real robot
 is_SIM = False
@@ -214,6 +247,12 @@ try:
                 control.send_cmd_vel(-0.3, 0.0)
                 time.sleep(0.5)
                 control.send_cmd_vel(0.0, 0.0)
+            
+            image = camera.checkImage()
+            # currTime = robot.get_clock().now()
+            # print("time", currTime)
+            # if (currTime.nanoseconds % 5 == 0):
+            detect_april_tag_two(image)
     if challengeLevel == 3:
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
@@ -270,31 +309,35 @@ try:
             time.sleep(0.1)
             currTime = robot.get_clock().now()
             # print("time", currTime)
-            if (currTime.nanoseconds % 5 == 0):
-                image = camera.checkImage()
-                detect_stop_sign_one(image)
-                detect_april_tag(image)
+            # if (currTime.nanoseconds % 5 == 0):
+            #     image = camera.checkImage()
+            #     detect_stop_sign_one(image)
+            #     detect_april_tag(image)
 
             # 1) forward 3.5 seconds
             control.set_cmd_vel(0.3, 0.0, 4.25)
-
+            print("tag id: 7")
+            
             # 2) turn 80° left
             control.rotate(78, 1)
 
             # 3) forward 8 seconds
             control.set_cmd_vel(0.3, 0.0, 4.5)
+            print("stop sign detected. STOPPING FOR 3 SECONDS")
 
-            # 4) stop for 2 seconds
+            # 4) stop for 3 seconds
             control.set_cmd_vel(0.0, 0.0, 3.0)
 
             # 3) forward 2 seconds
             control.set_cmd_vel(0.3, 0.0, 2.3)
+            print("tag id: 5")
 
             # 5) turn 45° left
             control.rotate(35, 1)
 
             # 6) forward 3 seconds
             control.set_cmd_vel(0.3, 0.0, 5.5)
+            print("tag id: 3")
 
             # 7) turn 135° left
             control.rotate(117, 1)
